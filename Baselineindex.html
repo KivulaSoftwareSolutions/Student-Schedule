@@ -1,0 +1,314 @@
+<<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Student Off-Block Schedule</title>
+<style>
+body { font-family: Arial, sans-serif; background:#f0f4f8; margin:0; padding:0; color:#333;}
+header { background:#0047ab; color:white; text-align:center; padding:20px;}
+main { max-width:1100px; margin:40px auto; background:white; border-radius:10px; padding:30px; box-shadow:0 0 15px rgba(0,0,0,0.1);}
+label { display:block; margin-top:20px; font-weight:bold;}
+select, input[type="date"] { margin-top:8px; padding:8px; font-size:16px; border-radius:5px; border:1px solid #ccc;}
+table { width:100%; border-collapse:collapse; margin-top:20px;}
+th, td { border:1px solid #ddd; padding:10px; text-align:left;}
+th { background-color:#0047ab; color:white;}
+td.free-time { background-color:#ffe600; font-weight:bold;}
+.bell-schedule { margin-top:30px; background:#e0f0ff; padding:20px; border-radius:10px;}
+.bell-schedule h3 { margin-top:0;}
+#friday-picker { display:none; margin-top:20px;}
+.hidden { display:none; }
+</style>
+</head>
+<body>
+
+<header>
+<h1>Student Off-Block Schedule</h1>
+</header>
+
+<main>
+<label for="school-select">Select School:</label>
+<select id="school-select">
+  <option value="">--Select a School--</option>
+  <option value="cpa">Charles P Allen High School</option>
+  <option value="halifaxWest">Halifax West High School</option>
+  <option value="citadel">Citadel High School</option>
+  <option value="millwood">Millwood High School</option>
+  <option value="sackville">Sackville High School</option>
+  <option value="auburn">Auburn Drive High School</option>
+</select>
+
+<div id="block-container" style="display:none;">
+  <label for="block-select">Select Off-Block:</label>
+  <select id="block-select">
+    <option value="">--Select Block--</option>
+  </select>
+</div>
+
+<!-- Friday date selection (Auburn only) -->
+<div id="friday-picker">
+  <label>Select Friday Date:</label>
+  <input type="date" id="friday-date" />
+  <p><strong>Note:</strong> Only Fridays will work. Rotation begins Oct 31, 2025.</p>
+</div>
+
+<div id="result" style="margin-top:30px;"></div>
+<div id="bell-schedule" class="bell-schedule" style="display:none;"></div>
+</main>
+
+<script>
+const referenceFriday = new Date("2025-10-31"); // = Thursday schedule
+
+// ================ SCHOOL DATA (BASELINE + AUBURN ADDED) ==================
+const schools = {
+  cpa: { name:"Charles P Allen High School",
+    address:"200 Innovation Drive<br>Bedford, NS<br>B4B 0G4",
+    bellSchedule:[
+      {name:'1st Morning Class', start:'09:20', end:'10:40'},
+      {name:'2nd Morning Class', start:'10:45', end:'11:55'},
+      {name:'Lunch', start:'12:00', end:'12:40'},
+      {name:'1st Afternoon Class', start:'12:40', end:'14:10'},
+      {name:'2nd Afternoon Class', start:'14:10', end:'15:25'}
+    ],
+    lunch:{start:'12:00',end:'12:40'},
+    blockMapping:{
+      Monday:{A:'1st Morning Class', B:'2nd Morning Class', C:'1st Afternoon Class', D:'2nd Afternoon Class'},
+      Tuesday:{A:'2nd Afternoon Class', B:'1st Morning Class', C:'2nd Morning Class', D:'1st Afternoon Class'},
+      Wednesday:{A:'1st Afternoon Class', B:'2nd Afternoon Class', C:'1st Morning Class', D:'2nd Morning Class'},
+      Thursday:{A:'2nd Morning Class', B:'1st Afternoon Class', C:'2nd Afternoon Class', D:'1st Morning Class'}
+    },
+    blocks:['A','B','C','D']
+  },
+
+  halifaxWest: {
+    name:"Halifax West High School",
+    address:"283 Thomas Raddall Drive<br>Halifax, NS<br>B3S 1R1",
+    bellSchedule:[
+      {name:'1st Morning Class', start:'09:25', end:'10:40'},
+      {name:'2nd Morning Class', start:'10:47', end:'12:02'},
+      {name:'Lunch', start:'12:02', end:'12:58'},
+      {name:'1st Afternoon Class', start:'12:58', end:'14:13'},
+      {name:'2nd Afternoon Class', start:'14:20', end:'15:35'}
+    ],
+    lunch:{start:'12:02',end:'12:58'},
+    blockMapping:{
+      Monday:{A:'1st Morning Class', B:'2nd Morning Class', C:'1st Afternoon Class', D:'2nd Afternoon Class'},
+      Tuesday:{A:'2nd Morning Class', B:'1st Morning Class', C:'2nd Afternoon Class', D:'1st Afternoon Class'},
+      Wednesday:{A:'1st Afternoon Class', B:'2nd Afternoon Class', C:'1st Morning Class', D:'2nd Morning Class'},
+      Thursday:{A:'2nd Afternoon Class', B:'1st Afternoon Class', C:'2nd Morning Class', D:'1st Morning Class'}
+    },
+    blocks:['A','B','C','D']
+  },
+
+  citadel:{
+    name:"Citadel High School",
+    address:"1855 Trollope Street<br>Halifax, NS<br>B3H 0A4",
+    bellSchedule:[
+      {name:'1st Morning Class', start:'09:20', end:'10:35'},
+      {name:'2nd Morning Class', start:'10:40', end:'11:55'},
+      {name:'Lunch', start:'11:55', end:'12:50'},
+      {name:'1st Afternoon Class', start:'12:50', end:'14:05'},
+      {name:'2nd Afternoon Class', start:'14:10', end:'15:25'}
+    ],
+    lunch:{start:'11:55',end:'12:50'},
+    blockMapping:{
+      Monday:{A:'1st Morning Class', B:'2nd Morning Class', C:'1st Afternoon Class', D:'2nd Afternoon Class'},
+      Tuesday:{A:'2nd Morning Class', B:'1st Morning Class', C:'2nd Afternoon Class', D:'1st Afternoon Class'},
+      Wednesday:{A:'1st Afternoon Class', B:'2nd Afternoon Class', C:'1st Morning Class', D:'2nd Morning Class'},
+      Thursday:{A:'2nd Afternoon Class', B:'1st Afternoon Class', C:'2nd Morning Class', D:'1st Morning Class'}
+    },
+    blocks:['A','B','C','D']
+  },
+
+  millwood:{
+    name:"Millwood High School",
+    address:"141 Millwood Drive<br>Middle Sackville, NS<br>B4E 0A1",
+    bellSchedule:[
+      {name:'Period 1', start:'09:20', end:'10:35'},
+      {name:'Period 2', start:'10:45', end:'12:00'},
+      {name:'Lunch', start:'12:00', end:'12:45'},
+      {name:'Period 3', start:'12:50', end:'14:05'},
+      {name:'Period 4', start:'14:10', end:'15:25'}
+    ],
+    lunch:{start:'12:00',end:'12:45'},
+    blockMapping:{
+      DayA:{1:'Period 1', 2:'Period 2', 3:'Period 3', 4:'Period 4'},
+      DayB:{1:'Period 2', 2:'Period 1', 3:'Period 4', 4:'Period 3'},
+      DayC:{1:'Period 4', 2:'Period 3', 3:'Period 1', 4:'Period 2'},
+      DayD:{1:'Period 3', 2:'Period 4', 3:'Period 2', 4:'Period 1'}
+    },
+    blocks:['1','2','3','4']
+  },
+
+  sackville:{
+    name:"Sackville High School",
+    address:"1 Kingfisher Way<br>Lower Sackville, NS<br>B4C 2Y9",
+    bellSchedule:[
+      {name:'1st Morning Class', start:'08:55', end:'10:10'},
+      {name:'2nd Morning Class', start:'10:15', end:'11:30'},
+      {name:'Lunch', start:'11:30', end:'12:20'},
+      {name:'1st Afternoon Class', start:'12:25', end:'13:40'},
+      {name:'2nd Afternoon Class', start:'13:45', end:'15:00'}
+    ],
+    lunch:{start:'11:30',end:'12:20'},
+    blockMapping:{
+      DayA:{1:'1st Morning Class', 2:'2nd Morning Class', 3:'1st Afternoon Class', 4:'2nd Afternoon Class'},
+      DayB:{1:'2nd Morning Class', 2:'1st Morning Class', 3:'2nd Afternoon Class', 4:'1st Afternoon Class'},
+      DayC:{1:'2nd Afternoon Class', 2:'1st Afternoon Class', 3:'1st Morning Class', 4:'2nd Morning Class'},
+      DayD:{1:'1st Afternoon Class', 2:'2nd Afternoon Class', 3:'2nd Morning Class', 4:'1st Morning Class'}
+    },
+    blocks:['1','2','3','4']
+  },
+
+  auburn:{
+    name:"Auburn Drive High School",
+    address:"300 Auburn Drive<br>Westphal, NS<br>B2W 6E9",
+    bellSchedule:[
+      {name:'1st Morning Class', start:'08:35', end:'09:50'},
+      {name:'2nd Morning Class', start:'09:55', end:'11:10'},
+      {name:'Lunch', start:'11:10', end:'12:00'},
+      {name:'1st Afternoon Class', start:'12:00', end:'13:15'},
+      {name:'2nd Afternoon Class', start:'13:20', end:'14:35'}
+    ],
+    lunch:{start:'11:10',end:'12:00'},
+    blockMapping:{
+      Monday:{A:'1st Morning Class', B:'2nd Morning Class', C:'1st Afternoon Class', D:'2nd Afternoon Class'},
+      Tuesday:{A:'2nd Morning Class', B:'1st Morning Class', C:'2nd Afternoon Class', D:'1st Afternoon Class'},
+      Wednesday:{A:'1st Afternoon Class', B:'2nd Afternoon Class', C:'1st Morning Class', D:'2nd Morning Class'},
+      Thursday:{A:'2nd Afternoon Class', B:'1st Afternoon Class', C:'2nd Morning Class', D:'1st Morning Class'}
+    },
+    blocks:['A','B','C','D']
+  }
+};
+
+// ===================== UTILS =====================
+function timeToMinutes(t){ const [h,m]=t.split(':').map(Number); return h*60+m;}
+function minutesToTime(m){ const h=Math.floor(m/60); const min=m%60; return `${h}h ${min}m`; }
+
+function calculateFreeTime(blockName, school){
+  const bell=school.bellSchedule.find(b=>b.name===blockName);
+  if(!bell) return {display:'-',total:null};
+  const start=timeToMinutes(bell.start);
+  const end=timeToMinutes(bell.end);
+  let free=end-start;
+  const lunchStart=timeToMinutes(school.lunch.start);
+  const lunchEnd=timeToMinutes(school.lunch.end);
+  let extraText='';
+
+  if(school.name==='Millwood High School'){
+    if(blockName==='Period 2'||blockName==='Period 3') free+=(lunchEnd-lunchStart);
+  } else {
+    if(blockName==='2nd Morning Class'||blockName==='1st Afternoon Class') free+=(lunchEnd-lunchStart);
+  }
+
+  if(blockName==='1st Morning Class'){
+    extraText=`Available until: ${bell.end}`;
+  } else if(blockName==='2nd Morning Class'){
+    const fmEnd=school.bellSchedule.find(b=>b.name==='1st Morning Class').end;
+    const faStart=school.bellSchedule.find(b=>b.name==='1st Afternoon Class').start;
+    extraText=`Available from: ${fmEnd} – ${faStart}`;
+  } else if(blockName==='1st Afternoon Class'){
+    const saStart=school.bellSchedule.find(b=>b.name==='2nd Afternoon Class').start;
+    extraText=`Available from: ${school.lunch.start} – ${saStart}`;
+  } else if(blockName==='2nd Afternoon Class'){
+    const faEnd=school.bellSchedule.find(b=>b.name==='1st Afternoon Class').end;
+    extraText=`Last Class of day, off from: ${faEnd}`;
+    free=null;
+  }
+
+  return {display:`${bell.start}–${bell.end}`, total:free!==null ? minutesToTime(free)+' | '+extraText : extraText};
+}
+
+// ===================== SCHOOL SELECTION =====================
+document.getElementById("school-select").addEventListener("change", function() {
+  const val = this.value;
+  const blockSelect = document.getElementById("block-select");
+
+  blockSelect.innerHTML = '<option value="">--Select Block--</option>';
+
+  if (!val){
+    document.getElementById("block-container").style.display="none";
+    document.getElementById("friday-picker").style.display="none";
+    return;
+  }
+
+  schools[val].blocks.forEach(b => {
+    const opt=document.createElement("option");
+    opt.value=b; opt.text=b;
+    blockSelect.add(opt);
+  });
+
+  document.getElementById("block-container").style.display="block";
+  document.getElementById("result").innerHTML="";
+  document.getElementById("bell-schedule").style.display="none";
+
+  // Auburn = show Friday picker
+  document.getElementById("friday-picker").style.display = (val==="auburn") ? "block" : "none";
+});
+
+// ===================== BLOCK SELECTION =====================
+document.getElementById("block-select").addEventListener("change", updateResults);
+document.getElementById("friday-date").addEventListener("change", updateResults);
+
+function updateResults(){
+  const schoolKey=document.getElementById("school-select").value;
+  const block=document.getElementById("block-select").value;
+  if(!schoolKey||!block) return;
+
+  const school=schools[schoolKey];
+  let tableHTML=`<h2>Off-Block Times for ${school.name} (Block ${block})</h2>`;
+  tableHTML+=`<table><tr><th>Day</th><th>Block</th><th>Time</th><th>Total Free Time</th></tr>`;
+
+  if(schoolKey==="millwood" || schoolKey==="sackville"){
+    ['DayA','DayB','DayC','DayD'].forEach(day=>{
+      const blockName=school.blockMapping[day][block];
+      const {display,total}=calculateFreeTime(blockName,school);
+      tableHTML+=`<tr><td>${day}</td><td>${blockName}</td><td>${display}</td><td class="free-time">${total||'-'}</td></tr>`;
+    });
+
+  } else if(schoolKey==="auburn"){
+
+    // Monday – Thursday (Auburn)
+    ["Monday","Tuesday","Wednesday","Thursday"].forEach(day=>{
+      const blockName=school.blockMapping[day][block];
+      const {display,total}=calculateFreeTime(blockName, school);
+      tableHTML+=`<tr><td>${day}</td><td>${blockName}</td><td>${display}</td><td class="free-time">${total||'-'}</td></tr>`;
+    });
+
+    // Friday rotation date-based
+    const fridayDate=document.getElementById("friday-date").value;
+    if(fridayDate){
+      const d=new Date(fridayDate);
+      if(d.getDay()===5){
+        const weeksPassed=Math.floor((d-referenceFriday)/(7*24*60*60*1000));
+        const rotation=["Thursday","Monday","Tuesday","Wednesday"];
+        const mappedDay=rotation[(weeksPassed % 4 + 4) % 4];
+        const blockName=school.blockMapping[mappedDay][block];
+        const {display,total}=calculateFreeTime(blockName, school);
+        tableHTML+=`<tr><td><strong>Friday (${mappedDay} rotation)</strong></td><td>${blockName}</td><td>${display}</td><td class="free-time">${total||'-'}</td></tr>`;
+      }
+    }
+
+  } else {
+
+    // Normal schools Monday–Thursday only
+    ["Monday","Tuesday","Wednesday","Thursday"].forEach(day=>{
+      const blockName=school.blockMapping[day][block];
+      const {display,total}=calculateFreeTime(blockName, school);
+      tableHTML+=`<tr><td>${day}</td><td>${blockName}</td><td>${display}</td><td class="free-time">${total||'-'}</td></tr>`;
+    });
+  }
+
+  tableHTML+="</table>";
+  document.getElementById("result").innerHTML=tableHTML;
+
+  let bellHTML=`<h3>${school.name} Bell Schedule</h3><ul>`;
+  school.bellSchedule.forEach(b=> bellHTML+=`<li><strong>${b.name}:</strong> ${b.start}–${b.end}</li>`);
+  bellHTML+=`</ul><br><strong>School Address:</strong><br>${school.address}`;
+  const bellDiv=document.getElementById("bell-schedule");
+  bellDiv.innerHTML=bellHTML;
+  bellDiv.style.display="block";
+}
+</script>
+</body>
+</html>

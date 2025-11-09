@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Student Off-Block Schedule</title>
+<style>
+  body { font-family: Arial, sans-serif; background:#f0f4f8; margin:0; padding:0; color:#333;}
+  header { background:#0047ab; color:white; text-align:center; padding:20px;}
+  main { max-width:1100px; margin:20px auto; background:white; border-radius:10px; padding:20px; box-shadow:0 0 15px rgba(0,0,0,0.1);}
+  label { display:block; margin-top:16px; font-weight:bold;}
+  #school-search { display:none; margin-top:8px; padding:12px; font-size:18px; border-radius:6px; border:1px solid #ccc; width:100%; box-sizing:border-box;}
+  select, input[type="date"] { margin-top:8px; padding:12px; font-size:18px; border-radius:6px; border:1px solid #ccc; width:100%; box-sizing:border-box;}
+  table { width:100%; border-collapse:collapse; margin-top:20px;}
+  th, td { border:1px solid #ddd; padding:10px; text-align:left; font-size:15px;}
+  th { background-color:#0047ab; color:white;}
+  td.free-time { background-color:#ffe600; font-weight:bold;}
+  .bell-schedule { margin-top:20px; background:#e0f0ff; padding:16px; border-radius:10px;}
+  .bell-schedule h3 { margin-top:0;}
+  #friday-picker { display:none; margin-top:12px;}
+  #week-container { display:none; margin-top:12px;}
+  .small-note { font-size:0.9rem; color:#666; margin-top:6px; }
+  footer { position:fixed; bottom:0; left:0; width:100%; text-align:center; font-size:0.8rem; color:rgba(0,0,0,0.2); padding:6px; pointer-events:none; user-select:none;}
+  /* mobile improvements */
+  @media(max-width:520px){
+    main{margin:12px;}
+    th, td { font-size:14px; padding:8px; }
+    select, #school-search { font-size:16px; padding:10px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Student Off-Block Schedule</h1>
+</header>
+
+<main>
+  <label for="school-select">Select School:</label>
+  <input id="school-search" placeholder="Search schools..." aria-label="Search schools">
+  <!-- inline onchange as robustness for mobile -->
+  <select id="school-select" aria-label="Select School" onchange="onSchoolChange()">
+    <option value="">--Select a School--</option>
+    <option value="cpa">Charles P Allen High School</option>
+    <option value="halifaxWest">Halifax West High School</option>
+    <option value="citadel">Citadel High School</option>
+    <option value="millwood">Millwood High School</option>
+    <option value="dartmouth">Dartmouth High School</option>
+    <option value="jlIlsley">JL Ilsley High School</option>
+    <option value="sackville">Sackville High School</option>
+    <option value="auburn">Auburn Drive High School</option>
+    <option value="cobequid">Cobequid Educational Centre</option>
+  </select>
+
+  <div id="block-container" style="display:none;">
+    <label for="block-select">Select Off-Block:</label>
+    <select id="block-select">
+      <option value="">--Select Block--</option>
+    </select>
+  </div>
+
+  <div id="week-container">
+    <label for="week-select">Select Week:</label>
+    <select id="week-select">
+      <option value="">--Select Week--</option>
+    </select>
+    <div class="small-note">Pick a 5-day week to populate Mon–Fri (Day letter or day-number comes from school calendar).</div>
+  </div>
+
+  <div id="friday-picker">
+    <label for="friday-select">Select Friday Date:</label>
+    <select id="friday-select">
+      <option value="">--Select Friday--</option>
+    </select>
+    <div class="small-note">Only rotating Fridays are shown for CPA, Citadel and Auburn.</div>
+  </div>
+
+  <div id="result" style="margin-top:20px;"></div>
+  <div id="bell-schedule" class="bell-schedule" style="display:none;"></div>
+</main>
+
+<footer>© 2025 Student Off-Block Schedule • M Duffy / Kivula Software Solutions • All Rights Reserved</footer>
+
+<script>
+/* -------------------- Rotating Friday data (Citadel / Auburn) -------------------- */
+const rotatingFridays = [
+  {dateStr:"Nov 7, 2025", rotation:"Thursday"},
+  {dateStr:"Nov 14, 2025", rotation:"Tuesday"},
+  {dateStr:"Nov 21, 2025", rotation:"Monday"},
+  {dateStr:"Nov 28, 2025", rotation:"Wednesday"},
+  {dateStr:"Dec 5, 2025", rotation:"Thursday"},
+  {dateStr:"Dec 12, 2025", rotation:"Thursday"},
+  {dateStr:"Dec 19, 2025", rotation:"Monday"},
+  {dateStr:"Jan 9, 2026", rotation:"Tuesday"},
+  {dateStr:"Jan 16, 2026", rotation:"Wednesday"},
+  {dateStr:"Jan 23, 2026", rotation:"Thursday"},
+  {dateStr:"Jan 30, 2026", rotation:"No School"}
+];
+rotatingFridays.forEach(r => r.date = new Date(r.dateStr));
+
+/* -------------------- Charles P Allen Rotating Fridays -------------------- */
+const cpaFridays = [
+  {dateStr:"Nov 7, 2025", rotationDay:"THURS", blockOrder:"DCBA"},
+  {dateStr:"Nov 14, 2025", rotationDay:"TUES", blockOrder:"BADC"},
+  {dateStr:"Nov 21, 2025", rotationDay:"MON", blockOrder:"ABCD"},
+  {dateStr:"Nov 28, 2025", rotationDay:"WEDS", blockOrder:"CDAB"},
+  {dateStr:"Dec 5, 2025", rotationDay:"THURS", blockOrder:"DCBA"},
+  {dateStr:"Dec 12, 2025", rotationDay:"THURS", blockOrder:"DCBA"},
+  {dateStr:"Dec 19, 2025", rotationDay:"MON", blockOrder:"ABCD"},
+  {dateStr:"Jan 9, 2026", rotationDay:"TUES", blockOrder:"BADC"},
+  {dateStr:"Jan 16, 2026", rotationDay:"WEDS", blockOrder:"CDAB"},
+  {dateStr:"Jan 23, 2026", rotationDay:"THURS", blockOrder:"DCBA"},
+  {dateStr:"Jan 30, 2026", rotationDay:null, blockOrder:null} // NO SCHOOL
+];
+cpaFridays.forEach(f => f.date = new Date(f.dateStr));
+
+/* -------------------- Millwood & Dartmouth week definitions -------------------- */
+const millwoodWeeks = [
+  {label:'Nov 3-7, 2025', letters:['C','D','A','B','C'], dates:['Nov 3','Nov 4','Nov 5','Nov 6','Nov 7']},
+  {label:'Nov 10-14, 2025', letters:['D','HOLIDAY','A','B','C'], dates:['Nov 10','Nov 11','Nov 12','Nov 13','Nov 14']},
+  {label:'Nov 17-21, 2025', letters:['D','A','B','C','D'], dates:['Nov 17','Nov 18','Nov 19','Nov 20','Nov 21']},
+  {label:'Nov 24-28, 2025', letters:['A','B','C','D','A'], dates:['Nov 24','Nov 25','Nov 26','Nov 27','Nov 28']},
+  {label:'Dec 1-5, 2025', letters:['B','C','D','PD','A'], dates:['Dec 1','Dec 2','Dec 3','Dec 4','Dec 5']},
+  {label:'Dec 8-12, 2025', letters:['B','C','D','A','B'], dates:['Dec 8','Dec 9','Dec 10','Dec 11','Dec 12']},
+  {label:'Dec 15-19, 2025', letters:['C','D','A','B','C'], dates:['Dec 15','Dec 16','Dec 17','Dec 18','Dec 19']},
+  {label:'Jan 5-9, 2026', letters:['D','A','B','C','D'], dates:['Jan 5','Jan 6','Jan 7','Jan 8','Jan 9']},
+  {label:'Jan 12-16, 2026', letters:['A','B','C','D','A'], dates:['Jan 12','Jan 13','Jan 14','Jan 15','Jan 16']},
+  {label:'Feb 2-6, 2026', letters:['A','B','C','D','A'], dates:['Feb 2','Feb 3','Feb 4','Feb 5','Feb 6']}
+];
+
+const dartmouthWeeks = [
+  {label:'Nov 3-7, 2025', letters:['C','D','A','B','C'], dates:['Nov 3','Nov 4','Nov 5','Nov 6','Nov 7']},
+  {label:'Nov 10-14, 2025', letters:['D','HOLIDAY','A','B','C'], dates:['Nov 10','Nov 11','Nov 12','Nov 13','Nov 14']},
+  {label:'Nov 17-21, 2025', letters:['D','A','B','C','D'], dates:['Nov 17','Nov 18','Nov 19','Nov 20','Nov 21']},
+  {label:'Nov 24-28, 2025', letters:['A','B','C','D','A'], dates:['Nov 24','Nov 25','Nov 26','Nov 27','Nov 28']},
+  {label:'Dec 1-5, 2025', letters:['B','C','D','PD','A'], dates:['Dec 1','Dec 2','Dec 3','Dec 4','Dec 5']},
+  {label:'Dec 8-12, 2025', letters:['B','C','D','A','B'], dates:['Dec 8','Dec 9','Dec 10','Dec 11','Dec 12']},
+  {label:'Dec 15-19, 2025', letters:['C','D','A','B','C'], dates:['Dec 15','Dec 16','Dec 17','Dec 18','Dec 19']},
+  {label:'Jan 5-9, 2026', letters:['D','A','B','C','D'], dates:['Jan 5','Jan 6','Jan 7','Jan 8','Jan 9']},
+  {label:'Jan 12-16, 2026', letters:['A','B','C','D','A'], dates:['Jan 12','Jan 13','Jan 14','Jan 15','Jan 16']},
+  {label:'Feb 2-6, 2026', letters:['A','B','C','D','A'], dates:['Feb 2','Feb 3','Feb 4','Feb 5','Feb 6']},
+  {label:'Mar 2-6, 2026', letters:['D','A','B','C','D'], dates:['Mar 2','Mar 3','Mar 4','Mar 5','Mar 6']},
+  {label:'Mar 16-20, 2026', letters:['A','B','C','D','A'], dates:['Mar 16','Mar 17','Mar 18','Mar 19','Mar 20']},
+  {label:'Mar 23-27, 2026', letters:['B','C','D','A','B'], dates:['Mar 23','Mar 24','Mar 25','Mar 26','Mar 27']},
+  {label:'Mar 30-Apr 3, 2026', letters:['C','D','A','B','C'], dates:['Mar 30','Mar 31','Apr 1','Apr 2','Apr 3']},
+  {label:'Apr 6-10, 2026', letters:['PD','HOLIDAY','B','C','D'], dates:['Apr 6','Apr 7','Apr 8','Apr 9','Apr 10']},
+  {label:'Apr 13-17, 2026', letters:['B','C','D','A','B'], dates:['Apr 13','Apr 14','Apr 15','Apr 16','Apr 17']},
+  {label:'Apr 20-24, 2026', letters:['C','D','A','B','C'], dates:['Apr 20','Apr 21','Apr 22','Apr 23','Apr 24']},
+  {label:'Apr 27-May 1, 2026', letters:['D','A','PD','B','-'], dates:['Apr 27','Apr 28','Apr 29','Apr 30','May 1']},
+  {label:'May 4-8, 2026', letters:['D','A','B','C','D'], dates:['May 4','May 5','May 6','May 7','May 8']},
+  {label:'May 11-15, 2026', letters:['A','B','C','D','A'], dates:['May 11','May 12','May 13','May 14','May 15']},
+  {label:'May 25-29, 2026', letters:['B','C','D','A','B'], dates:['May 25','May 26','May 27','May 28','May 29']},
+  {label:'Jun 1-5, 2026', letters:['C','D','A','B','C'], dates:['Jun 1','Jun 2','Jun 3','Jun 4','Jun 5']}
+];
+
+/* -------------------- JL ILSLEY WEEKS (FULL Nov → Jun as provided) -------------------- */
+const jlIlsleyWeeks = [
+  /* NOVEMBER */
+  {label:'Nov 3-7, 2025', letters:['B','C','D','A','B'], dates:['Nov 3','Nov 4','Nov 5','Nov 6','Nov 7']},
+  {label:'Nov 10-14, 2025', letters:['C','HOLIDAY','D','A','B'], dates:['Nov 10','Nov 11','Nov 12','Nov 13','Nov 14']},
+  {label:'Nov 17-21, 2025', letters:['C','D','A','B','C'], dates:['Nov 17','Nov 18','Nov 19','Nov 20','Nov 21']},
+  {label:'Nov 24-28, 2025', letters:['D','A','B','C','D'], dates:['Nov 24','Nov 25','Nov 26','Nov 27','Nov 28']},
+
+  /* DECEMBER */
+  {label:'Dec 1-5, 2025', letters:['A','B','C','PD DAY','D'], dates:['Dec 1','Dec 2','Dec 3','Dec 4','Dec 5']},
+  {label:'Dec 8-12, 2025', letters:['A','B','C','D','A'], dates:['Dec 8','Dec 9','Dec 10','Dec 11','Dec 12']},
+  {label:'Dec 15-19, 2025', letters:['B','C','D','A','B'], dates:['Dec 15','Dec 16','Dec 17','Dec 18','Dec 19']},
+  {label:'Dec 22-26, 2025', letters:['PD DAY','No School','No School','No School','No School'], dates:['Dec 22','Dec 23','Dec 24','Dec 25','Dec 26']},
+
+  /* JANUARY */
+  {label:'Jan 5-9, 2026', letters:['C','D','A','B','C'], dates:['Jan 5','Jan 6','Jan 7','Jan 8','Jan 9']},
+  {label:'Jan 12-16, 2026', letters:['D','A','B','C','D'], dates:['Jan 12','Jan 13','Jan 14','Jan 15','Jan 16']},
+  {label:'Jan 19-23, 2026', letters:['A','B','C','D','A'], dates:['Jan 19','Jan 20','Jan 21','Jan 22','Jan 23']},
+  {label:'Jan 26-30, 2026', letters:['B','C','No School','No School','No School'], dates:['Jan 26','Jan 27','Jan 28','Jan 29','Jan 30']},
+
+  /* FEBRUARY */
+  {label:'Feb 2-6, 2026', letters:['A','B','C','D','A'], dates:['Feb 2','Feb 3','Feb 4','Feb 5','Feb 6']},
+  {label:'Feb 9-13, 2026', letters:['B','C','D','A','B'], dates:['Feb 9','Feb 10','Feb 11','Feb 12','Feb 13']},
+  {label:'Feb 16-20, 2026', letters:['Heritage Day - No School','C','D','A','B'], dates:['Feb 16','Feb 17','Feb 18','Feb 19','Feb 20']},
+  {label:'Feb 23-27, 2026', letters:['C','D','A','B','C'], dates:['Feb 23','Feb 24','Feb 25','Feb 26','Feb 27']},
+
+  /* MARCH */
+  {label:'Mar 2-6, 2026', letters:['D','A','B','C','D'], dates:['Mar 2','Mar 3','Mar 4','Mar 5','Mar 6']},
+  {label:'Mar 9-13, 2026', letters:['A','B','C','D','A'], dates:['Mar 9','Mar 10','Mar 11','Mar 12','Mar 13']},
+  {label:'Mar 16-20, 2026', letters:['March Break - No School','March Break - No School','March Break - No School','March Break - No School','March Break - No School'], dates:['Mar 16','Mar 17','Mar 18','Mar 19','Mar 20']},
+  {label:'Mar 23-27, 2026', letters:['B','C','D','A','B'], dates:['Mar 23','Mar 24','Mar 25','Mar 26','Mar 27']},
+  {label:'Mar 30-31, 2026', letters:['C','D'], dates:['Mar 30','Mar 31']},
+
+  /* APRIL */
+  {label:'Apr 1-3, 2026', letters:['A','PD DAY','Good Friday - No School'], dates:['Apr 1','Apr 2','Apr 3']},
+  {label:'Apr 6-10, 2026', letters:['Easter Monday - No School','B','C','D','A'], dates:['Apr 6','Apr 7','Apr 8','Apr 9','Apr 10']},
+  {label:'Apr 13-17, 2026', letters:['B','C','D','A','B'], dates:['Apr 13','Apr 14','Apr 15','Apr 16','Apr 17']},
+  {label:'Apr 20-24, 2026', letters:['C','D','A','B','C'], dates:['Apr 20','Apr 21','Apr 22','Apr 23','Apr 24']},
+  {label:'Apr 27-30, 2026', letters:['D','A','PD DAY','B'], dates:['Apr 27','Apr 28','Apr 29','Apr 30']},
+
+  /* MAY */
+  {label:'May 1, 2026', letters:['C'], dates:['May 1']},
+  {label:'May 4-8, 2026', letters:['D','A','B','C','D'], dates:['May 4','May 5','May 6','May 7','May 8']},
+  {label:'May 11-15, 2026', letters:['A','B','C','D','Victoria Day - No School'], dates:['May 11','May 12','May 13','May 14','May 15']},
+  {label:'May 18-22, 2026', letters:['No School','B','C','D','A'], dates:['May 18','May 19','May 20','May 21','May 22']},
+  {label:'May 25-29, 2026', letters:['B','C','D','A','B'], dates:['May 25','May 26','May 27','May 28','May 29']},
+
+  /* JUNE */
+  {label:'Jun 1-5, 2026', letters:['C','D','A','B','C'], dates:['Jun 1','Jun 2','Jun 3','Jun 4','Jun 5']},
+  {label:'Jun 8-12, 2026', letters:['D','A','B','C','D'], dates:['Jun 8','Jun 9','Jun 10','Jun 11','Jun 12']},
+  {label:'Jun 15-19, 2026', letters:['A','B','C','D','A'], dates:['Jun 15','Jun 16','Jun 17','Jun 18','Jun 19']},
+  {label:'Jun 22-30, 2026', letters:['B','Exams','Exams','Exams','Exams','Exams','Exams'], dates:['Jun 22','Jun 23','Jun 24','Jun 25','Jun 26','Jun 29','Jun 30']}
+];
+
+/* -------------------- COBEQUID WEEKS (full calendar from your data; uses day-numbers 1-8) -------------------- */
+const cobequidWeeks = [
+  {label:'Nov 3-7, 2025', letters:['7','8','1','2','3'], dates:['Nov 3','Nov 4','Nov 5','Nov 6','Nov 7']},
+  {label:'Nov 10-14, 2025', letters:['4','HOLIDAY','5','6','7'], dates:['Nov 10','Nov 11','Nov 12','Nov 13','Nov 14']},
+  {label:'Nov 17-21, 2025', letters:['8','1','2','3','4'], dates:['Nov 17','Nov 18','Nov 19','Nov 20','Nov 21']},
+  {label:'Nov 24-28, 2025', letters:['5','6','7','8','1'], dates:['Nov 24','Nov 25','Nov 26','Nov 27','Nov 28']},
+
+  {label:'Dec 1-5, 2025', letters:['2','3','4','PD DAY','5'], dates:['Dec 1','Dec 2','Dec 3','Dec 4','Dec 5']},
+  {label:'Dec 8-12, 2025', letters:['6','7','8','1','2'], dates:['Dec 8','Dec 9','Dec 10','Dec 11','Dec 12']},
+  {label:'Dec 15-19, 2025', letters:['3','4','5','6','7'], dates:['Dec 15','Dec 16','Dec 17','Dec 18','Dec 19']},
+  {label:'Dec 22-26, 2025', letters:['PD DAY','No School','No School','No School','No School'], dates:['Dec 22','Dec 23','Dec 24','Dec 25','Dec 26']},
+
+  {label:'Jan 5-9, 2026', letters:['8','1','2','3','4'], dates:['Jan 5','Jan 6','Jan 7','Jan 8','Jan 9']},
+  {label:'Jan 12-16, 2026', letters:['5','6','7','8','1'], dates:['Jan 12','Jan 13','Jan 14','Jan 15','Jan 16']},
+  {label:'Jan 19-23, 2026', letters:['2','3','4','5','6'], dates:['Jan 19','Jan 20','Jan 21','Jan 22','Jan 23']},
+  {label:'Jan 26-30, 2026', letters:['7','8','1','2','No Classes'], dates:['Jan 26','Jan 27','Jan 28','Jan 29','Jan 30']},
+
+  {label:'Feb 2-6, 2026', letters:['4','5','6','7','8'], dates:['Feb 2','Feb 3','Feb 4','Feb 5','Feb 6']},
+  {label:'Feb 9-13, 2026', letters:['1','2','3','4','5'], dates:['Feb 9','Feb 10','Feb 11','Feb 12','Feb 13']},
+  {label:'Feb 16-20, 2026', letters:['HERITAGE DAY','6','7','8','1'], dates:['Feb 16','Feb 17','Feb 18','Feb 19','Feb 20']},
+  {label:'Feb 23-27, 2026', letters:['2','3','4','5','6'], dates:['Feb 23','Feb 24','Feb 25','Feb 26','Feb 27']},
+
+  {label:'Mar 2-6, 2026', letters:['7','8','1','2','3'], dates:['Mar 2','Mar 3','Mar 4','Mar 5','Mar 6']},
+  {label:'Mar 9-13, 2026', letters:['4','5','6','7','8'], dates:['Mar 9','Mar 10','Mar 11','Mar 12','Mar 13']},
+  {label:'Mar 16-20, 2026', letters:['March Break','March Break','March Break','March Break','March Break'], dates:['Mar 16','Mar 17','Mar 18','Mar 19','Mar 20']},
+  {label:'Mar 23-27, 2026', letters:['1','2','3','4','5'], dates:['Mar 23','Mar 24','Mar 25','Mar 26','Mar 27']},
+  {label:'Mar 30-31, 2026', letters:['6','7'], dates:['Mar 30','Mar 31']},
+
+  {label:'Apr 1-3, 2026', letters:['8','PD DAY','GOOD FRIDAY'], dates:['Apr 1','Apr 2','Apr 3']},
+  {label:'Apr 6-10, 2026', letters:['EASTER MONDAY','1','2','3','4'], dates:['Apr 6','Apr 7','Apr 8','Apr 9','Apr 10']},
+  {label:'Apr 13-17, 2026', letters:['5','6','7','8','1'], dates:['Apr 13','Apr 14','Apr 15','Apr 16','Apr 17']},
+  {label:'Apr 20-24, 2026', letters:['2','3','4','5','6'], dates:['Apr 20','Apr 21','Apr 22','Apr 23','Apr 24']},
+  {label:'Apr 27-30, 2026', letters:['7','8','PD Day','1','-'], dates:['Apr 27','Apr 28','Apr 29','Apr 30','May 1']},
+
+  {label:'May 1, 2026', letters:['2'], dates:['May 1']},
+  {label:'May 4-8, 2026', letters:['3','4','5','6','7'], dates:['May 4','May 5','May 6','May 7','May 8']},
+  {label:'May 11-15, 2026', letters:['8','1','2','3','4'], dates:['May 11','May 12','May 13','May 14','May 15']},
+  {label:'May 18-22, 2026', letters:['Victoria Day - No classes','5','6','7','8'], dates:['May 18','May 19','May 20','May 21','May 22']},
+  {label:'May 25-29, 2026', letters:['1','2','3','4','5'], dates:['May 25','May 26','May 27','May 28','May 29']},
+
+  {label:'Jun 1-5, 2026', letters:['6','7','8','1','2'], dates:['Jun 1','Jun 2','Jun 3','Jun 4','Jun 5']},
+  {label:'Jun 8-12, 2026', letters:['3','4','5','6','7'], dates:['Jun 8','Jun 9','Jun 10','Jun 11','Jun 12']},
+  {label:'Jun 15-19, 2026', letters:['8','1','2','3','4'], dates:['Jun 15','Jun 16','Jun 17','Jun 18','Jun 19']},
+  {label:'Jun 22-30, 2026', letters:['5','6','7','8','No Classes','No Classes','Last Day'], dates:['Jun 22','Jun 23','Jun 24','Jun 25','Jun 26','Jun 29','Jun 30']}
+];
+
+/* -------------------- Utility helpers -------------------- */
+function timeToMinutes(t){ const [h,m]=t.split(':').map(Number); return h*60+m; }
+function minutesToTime(m){ const h=Math.floor(m/60); const min=m%60; return `${h}h ${min}m`; }
+function hhmmToFriendly(t){ if(!t) return ''; const [h,m]=t.split(':').map(Number); const ampm = h>=12? 'pm':'am'; const hh = ((h+11)%12)+1; return `${hh}:${m.toString().padStart(2,'0')}${ampm}`; }
+
+/* -------------------- School data (master + JL Ilsley + Cobequid) -------------------- */
+const schools = {
+  cpa: {
+    name:"Charles P Allen High School",
+    address:"200 Innovation Drive<br>Bedford, NS<br>B4B 0G4",
+    bellSchedule:[
+      {name:'1st Morning Class', start:'09:20', end:'10:40'},
+      {name:'2nd Morning Class', start:'10:45', end:'11:55'},
+      {name:'Lunch', start:'12:00', end:'12:40'},
+      {name:'1st Afternoon Class', start:'12:40', end:'14:10'},
+      {name:'2nd Afternoon Class', start:'14:10', end:'15:25'}
+    ],
+    lunch:{start:'12:00',end:'12:40'},
+    blockMapping:{
+      Monday:{A:'1st Morning Class', B:'2nd Morning Class', C:'1st Afternoon Class', D:'2nd Afternoon Class'},
+      Tuesday:{A:'2nd Morning Class', B:'1st Morning Class', C:'2nd Afternoon Class', D:'2nd Afternoon Class'},
+      Wednesday:{A:'1st Afternoon Class', B:'2nd Afternoon Class', C:'1st Morning Class', D:'2nd Morning Class'},
+      Thursday:{A:'2nd Afternoon Class', B:'1st Afternoon Class', C:'2nd Morning Class', D:'1st Morning Class'}
+    },
+    blocks:['A','B','C','D']
+  },
+  halifaxWest: {
+    name:"Halifax West High School",
+    address:"283 Thomas Raddall Drive<br>Halifax, NS<br>B3S 1R1",
+    bellSchedule:[
+      {name:'1st Morning Class', start:'09:25', end:'10:40'},
+      {name:'2nd Morning Class', start:'10:47', end:'12:02'},
+      {name:'Lunch', start:'12:02', end:'12:58'},
+      {name:'1st Afternoon Class', start:'12:58', end:'14:13'},
+      {name:'2nd Afternoon Class', start:'14:20', end:'15:35'}
+    ],
+    lunch:{start:'12:02',end:'12:58'},
+    blockMapping:{
+      Monday:{A:'1st Morning Class', B:'2nd Morning Class', C:'1st Afternoon Class', D:'2nd Afternoon Class'},
+      Tuesday:{A:'2nd Morning Class', B:'1st Morning Class', C:'2nd Afternoon Class', D:'1st Afternoon Class'},
+      Wednesday:{A:'1st Afternoon Class', B:'2nd Afternoon Class', C:'1st Morning Class', D:'2nd Morning Class'},
+      Thursday:{A:'2nd Afternoon Class', B:'1st Afternoon Class', C:'2nd Morning Class', D:'1st Morning Class'}
+    },
+    blocks:['A','B','C','D']
+  },
+  citadel:{
+    name:"Citadel High School",
+    address:"1855 Trollope Street<br>Halifax, NS<br>B3H 0A4",
+    bellSchedule:[
+      {name:'1st Morning Class', start:'09:20', end:'10:35'},
+      {name:'2nd Morning Class', start:'10:40', end:'11:55'},
+      {name:'Lunch', start:'11:55', end:'12:50'},
+      {name:'1st Afternoon Class', start:'12:50', end:'14:05'},
+      {name:'2nd Afternoon Class', start:'14:10', end:'15:25'}
+    ],
+    lunch:{start:'11:55',end:'12:50'},
+    blockMapping:{
+      Monday:{A:'1st Morning Class', B:'2nd Morning Class', C:'1st Afternoon Class', D:'2nd Afternoon Class'},
+      Tuesday:{A:'2nd Morning Class', B:'1st Morning Class', C:'2nd Afternoon Class', D:'1st Afternoon Class'},
+      Wednesday:{A:'1st Afternoon Class', B:'2nd Afternoon Class', C:'1st Morning Class', D:'2nd Morning Class'},
+      Thursday:{A:'2nd Afternoon Class', B:'1st Afternoon Class', C:'2nd Morning Class', D:'1st Morning Class'}
+    },
+    blocks:['A','B','C','D']
+  },
+
+  /* -------------------- COBEQUID (NEW) -------------------- */
+  cobequid:{
+    name:"Cobequid Educational Centre",
+    address:"34 Lorne Street<br>Truro, NS<br>B2N 3K3",
+    /* Cobequid uses an 8-day cycle (1..8) and blocks A-D (A=1st morning, B=2nd morning, C=1st afternoon, D=2nd afternoon) */
+    blocks:['A','B','C','D'],
+    bellSchedule:[
+      {name:'1st Morning Class', start:'08:50', end:'10:05'},
+      {name:'2nd Morning Class', start:'10:15', end:'11:30'},
+      {name:'Lunch', start:'11:30', end:'12:25'},
+      {name:'1st Afternoon Class', start:'12:25', end:'13:40'},
+      {name:'2nd Afternoon Class', start:'13:45', end:'15:00'}
+    ],
+    lunch:{start:'11:30',end:'12:25'},
+    /* To keep existing rendering logic (dayKey = 'Day' + letter) we provide Day1..Day8 mappings.
+       For Cobequid the block->class mapping stays the same for each cycle day (blocks A-D are same positions each day). */
+    blockMapping:{
+      Day1:{A:'1st Morning Class', B:'2nd Morning Class', C:'1st Afternoon Class', D:'2nd Afternoon Class'},
+      Day2:{A:'1st Morning Class', B:'2nd Morning Class', C:'1st Afternoon Class', D:'2nd Afternoon Class'},
+      Day3:{A:'1st Morning Class', B:'2nd Morning Class', C:'1st Afternoon Class', D:'2nd Afternoon Class'},
+      Day4:{A:'1st Morning Class', B:'2nd Morning Class', C:'1st Afternoon Class', D:'2nd Afternoon Class'},
+      Day5:{A:'1st Morning Class', B:'2nd Morning Class', C:'1st Afternoon Class', D:'2nd Afternoon Class'},
+      Day6:{A:'1st Morning Class', B:'2nd Morning Class', C:'1st Afternoon Class', D:'2nd Afternoon Class'},
+      Day7:{A:'1st Morning Class', B:'2nd Morning Class', C:'1st Afternoon Class', D:'2nd Afternoon Class'},
+      Day8:{A:'1st Morning Class', B:'2nd Morning Class', C:'1st Afternoon Class', D:'2nd Afternoon Class'}
+    },
+    weeks: cobequidWeeks
+  },
+
+  millwood:{
+    name:"Millwood High School",
+    address:"141 Millwood Drive<br>Middle Sackville, NS<br>B4E 0A1",
+    bellSchedule:[
+      {name:'1st Morning Class', start:'09:20', end:'10:35'},
+      {name:'2nd Morning Class', start:'10:45', end:'12:00'},
+      {name:'Lunch', start:'12:00', end:'12:45'},
+      {name:'1st Afternoon Class', start:'12:50', end:'14:05'},
+      {name:'2nd Afternoon Class', start:'14:10', end:'15:25'}
+    ],
+    lunch:{start:'12:00',end:'12:45'},
+    blockMapping:{
+      DayA:{'1':'1st Morning Class','2':'2nd Morning Class','3':'1st Afternoon Class','4':'2nd Afternoon Class'},
+      DayB:{'1':'2nd Morning Class','2':'1st Morning Class','3':'2nd Afternoon Class','4':'1st Afternoon Class'},
+      DayC:{'1':'2nd Afternoon Class','2':'1st Afternoon Class','3':'1st Morning Class','4':'2nd Morning Class'},
+      DayD:{'1':'1st Afternoon Class','2':'2nd Afternoon Class','3':'2nd Morning Class','4':'1st Morning Class'}
+    },
+    blocks:['1','2','3','4'],
+    weeks: millwoodWeeks
+  },
+  dartmouth:{
+    name:"Dartmouth High School",
+    address:"55 Ochterloney Street<br>Dartmouth, NS<br>B2Y 1H7",
+    bellSchedule:[
+      {name:'1st Morning Class', start:'08:25', end:'09:40'},
+      {name:'2nd Morning Class', start:'09:50', end:'11:05'},
+      {name:'Lunch', start:'11:05', end:'12:20'},
+      {name:'1st Afternoon Class', start:'12:25', end:'13:40'},
+      {name:'2nd Afternoon Class', start:'13:50', end:'15:05'}
+    ],
+    lunch:{start:'11:05',end:'12:20'},
+    blockMapping:{
+      DayA:{'1':'1st Morning Class','2':'2nd Morning Class','3':'1st Afternoon Class','4':'2nd Afternoon Class'},
+      DayB:{'1':'2nd Morning Class','2':'1st Morning Class','3':'2nd Afternoon Class','4':'1st Afternoon Class'},
+      DayC:{'1':'1st Afternoon Class','2':'2nd Afternoon Class','3':'1st Morning Class','4':'2nd Morning Class'},
+      DayD:{'1':'2nd Afternoon Class','2':'1st Afternoon Class','3':'2nd Morning Class','4':'1st Morning Class'}
+    },
+    blocks:['1','2','3','4'],
+    weeks: dartmouthWeeks
+  },
+
+  /* -------------------- JL Ilsley (ADDED) -------------------- */
+  jlIlsley:{
+    name:"JL Ilsley High School",
+    address:"138 Sylvia Avenue<br>Halifax, NS<br>B3R 1J9",
+    /* You specified JL Ilsley uses blocks 1-4 and school day ABCD — we keep numbered blocks in UI but day letter mapping handled by weeks / blockMapping */
+    blocks:['1','2','3','4'],
+    bellSchedule:[
+      {name:'1st Morning Class', start:'09:20', end:'10:35'},
+      {name:'2nd Morning Class', start:'10:40', end:'11:55'},
+      {name:'Lunch', start:'11:55', end:'12:45'},
+      {name:'1st Afternoon Class', start:'12:50', end:'14:05'},
+      {name:'2nd Afternoon Class', start:'14:10', end:'15:25'}
+    ],
+    lunch:{start:'11:55',end:'12:45'},
+    blockMapping:{
+      DayA:{'1':'1st Morning Class','2':'2nd Morning Class','3':'1st Afternoon Class','4':'2nd Afternoon Class'},
+      DayB:{'1':'2nd Morning Class','2':'1st Morning Class','3':'2nd Afternoon Class','4':'1st Afternoon Class'},
+      DayC:{'1':'1st Afternoon Class','2':'2nd Afternoon Class','3':'1st Morning Class','4':'2nd Morning Class'},
+      DayD:{'1':'2nd Afternoon Class','2':'1st Afternoon Class','3':'2nd Morning Class','4':'1st Morning Class'}
+    },
+  blocks:['1','2','3','4'],
+  weeks: jlIlsleyWeeks 
+  },
+
+  sackville:{
+    name:"Sackville High School",
+    address:"1 Kingfisher Way<br>Lower Sackville, NS<br>B4C 2Y9",
+    bellSchedule:[
+      {name:'1st Morning Class', start:'08:55', end:'10:10'},
+      {name:'2nd Morning Class', start:'10:15', end:'11:30'},
+      {name:'Lunch', start:'11:30', end:'12:20'},
+      {name:'1st Afternoon Class', start:'12:25', end:'13:40'},
+      {name:'2nd Afternoon Class', start:'13:45', end:'15:00'}
+    ],
+    lunch:{start:'11:30',end:'12:20'},
+    blockMapping:{
+      Monday:{'1':'1st Morning Class','2':'2nd Morning Class','3':'1st Afternoon Class','4':'2nd Afternoon Class'},
+      Tuesday:{'1':'2nd Morning Class','2':'1st Morning Class','3':'2nd Afternoon Class','4':'1st Afternoon Class'},
+      Wednesday:{'1':'2nd Afternoon Class','2':'1st Afternoon Class','3':'1st Morning Class','4':'2nd Morning Class'},
+      Thursday:{'1':'1st Afternoon Class','2':'2nd Afternoon Class','3':'2nd Morning Class','4':'1st Morning Class'}
+    },
+    blocks:['1','2','3','4']
+  },
+  auburn:{
+    name:"Auburn Drive High School",
+    address:"300 Auburn Drive<br>Cole Harbour, NS<br>B2W 6E9",
+    bellSchedule:[
+      {name:'1st Morning Class', start:'09:25', end:'10:40'},
+      {name:'2nd Morning Class', start:'10:50', end:'12:05'},
+      {name:'Lunch', start:'12:05', end:'12:50'},
+      {name:'1st Afternoon Class', start:'12:55', end:'14:10'},
+      {name:'2nd Afternoon Class', start:'14:20', end:'15:35'}
+    ],
+    lunch:{start:'12:05',end:'12:50'},
+    blockMapping:{
+      Monday:{A:'1st Morning Class', B:'2nd Morning Class', C:'1st Afternoon Class', D:'2nd Afternoon Class'},
+      Tuesday:{A:'2nd Morning Class', B:'1st Morning Class', C:'2nd Afternoon Class', D:'1st Afternoon Class'},
+      Wednesday:{A:'1st Afternoon Class', B:'2nd Afternoon Class', C:'1st Morning Class', D:'2nd Morning Class'},
+      Thursday:{A:'2nd Afternoon Class', B:'1st Afternoon Class', C:'2nd Morning Class', D:'1st Morning Class'}
+    },
+    blocks:['A','B','C','D']
+  }
+};
+
+/* -------------------- Free time calculation & display logic -------------------- */
+function calculateFreeTime(blockName, schoolKey){
+  if(!blockName) return {display:'-', total:null};
+  const school = schools[schoolKey] || schools['millwood'];
+  const bell = school.bellSchedule.find(b=>b.name === blockName);
+  if(!bell) return {display:'-', total:null};
+  const findByName = (n) => school.bellSchedule.find(b => b.name === n);
+
+  if(blockName === '1st Morning Class'){
+    const second = findByName('2nd Morning Class');
+    return {display:`${bell.start}–${bell.end}`, total:`First Class of Day - Available until: ${hhmmToFriendly(second ? second.start : '')}`};
+  }
+  if(blockName === '2nd Morning Class'){
+    const firstEnd = findByName('1st Morning Class') ? findByName('1st Morning Class').end : '';
+    const aftStart = findByName('1st Afternoon Class') ? findByName('1st Afternoon Class').start : '';
+    if(firstEnd && aftStart){ const totalM = timeToMinutes(aftStart) - timeToMinutes(firstEnd); return {display:`${bell.start}–${bell.end}`, total:`${hhmmToFriendly(firstEnd)}–${hhmmToFriendly(aftStart)} | ${minutesToTime(totalM)}`}; }
+    return {display:`${bell.start}–${bell.end}`, total:null};
+  }
+  if(blockName === '1st Afternoon Class'){
+    const lunchS = school.lunch ? school.lunch.start : '';
+    const secondAftStart = findByName('2nd Afternoon Class') ? findByName('2nd Afternoon Class').start : '';
+    if(lunchS && secondAftStart){ const totalM = timeToMinutes(secondAftStart) - timeToMinutes(lunchS); return {display:`${bell.start}–${bell.end}`, total:`${hhmmToFriendly(lunchS)}–${hhmmToFriendly(secondAftStart)} | ${minutesToTime(totalM)}`}; }
+    return {display:`${bell.start}–${bell.end}`, total:null};
+  }
+  if(blockName === '2nd Afternoon Class'){
+    const firstAft = findByName('1st Afternoon Class') ? findByName('1st Afternoon Class').end : '';
+    return {display:`${bell.start}–${bell.end}`, total:`Last Class of Day - Available from: ${hhmmToFriendly(firstAft)}`};
+  }
+  return {display:`${bell.start}–${bell.end}`, total:null};
+}
+
+/* -------------------- DOM references & search/filter behavior -------------------- */
+const schoolSelect = document.getElementById('school-select');
+const schoolSearch = document.getElementById('school-search');
+const blockSelect = document.getElementById('block-select');
+const fridayPicker = document.getElementById('friday-picker');
+const fridaySelect = document.getElementById('friday-select');
+const weekContainer = document.getElementById('week-container');
+const weekSelect = document.getElementById('week-select');
+
+schoolSelect.addEventListener('focus', ()=>{ schoolSearch.style.display='block'; schoolSearch.value=''; schoolSearch.focus(); filterSchoolOptions(''); });
+schoolSelect.addEventListener('blur', ()=> setTimeout(()=>{ if(document.activeElement !== schoolSearch) schoolSearch.style.display='none'; },150));
+function filterSchoolOptions(q){ const query=(q||'').toLowerCase().trim(); Array.from(schoolSelect.options).forEach((opt,idx)=>{ if(idx===0) return; const matches = opt.text.toLowerCase().includes(query); opt.hidden = !matches; opt.disabled = !matches; }); }
+schoolSearch.addEventListener('input', (e)=>{ filterSchoolOptions(e.target.value); const visible = Array.from(schoolSelect.options).filter(o=>!o.hidden && o.value); if(visible.length===1) { schoolSelect.value = visible[0].value; schoolSearch.style.display='none'; onSchoolChange(); } });
+schoolSearch.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ const visible = Array.from(schoolSelect.options).filter(o=>!o.hidden && o.value); if(visible.length===1){ schoolSelect.value = visible[0].value; schoolSearch.style.display='none'; onSchoolChange(); } e.preventDefault(); } else if(e.key==='Escape'){ schoolSearch.style.display='none'; schoolSearch.blur(); schoolSelect.focus(); } });
+
+schoolSelect.addEventListener('change', ()=>{ schoolSearch.style.display='none'; onSchoolChange(); });
+
+/* -------------------- When school changes -------------------- */
+function onSchoolChange(){
+  const key = schoolSelect.value;
+  blockSelect.innerHTML = '<option value="">--Select Block--</option>';
+  document.getElementById('result').innerHTML='';
+  document.getElementById('bell-schedule').style.display='none';
+  fridayPicker.style.display='none';
+  weekContainer.style.display='none';
+
+  if(!key){ document.getElementById('block-container').style.display='none'; return; }
+
+  // populate blocks (works for both lettered A-D and numbered 1-4)
+  const school = schools[key];
+  (school.blocks || []).forEach(b=>{ const opt=document.createElement('option'); opt.value=b; opt.text=b; blockSelect.add(opt); });
+  document.getElementById('block-container').style.display='block';
+
+  // Friday picker only for cpa / citadel / auburn
+  if(key==='cpa' || key==='citadel' || key==='auburn'){
+    fridayPicker.style.display='block';
+    fridaySelect.innerHTML = '<option value="">--Select Friday--</option>';
+    rotatingFridays.forEach(f => { const opt=document.createElement('option'); opt.value=f.dateStr; opt.text=f.dateStr; fridaySelect.add(opt); });
+    // auto-select next rotating friday
+    const now = new Date();
+    let next = rotatingFridays.find(f => f.date >= new Date(now.getFullYear(), now.getMonth(), now.getDate()));
+    if(!next) next = rotatingFridays[rotatingFridays.length-1];
+    if(next) fridaySelect.value = next.dateStr;
+  }
+
+  // week selector only for Millwood, Dartmouth, JL Ilsley and Cobequid
+  if(key==='millwood' || key==='dartmouth' || key==='jlIlsley' || key==='cobequid'){
+    weekContainer.style.display='block';
+    weekSelect.innerHTML = '<option value="">--Select Week--</option>';
+    const sourceWeeks = key==='millwood' ? millwoodWeeks : (key==='dartmouth' ? dartmouthWeeks : (key==='cobequid' ? cobequidWeeks : jlIlsleyWeeks));
+    sourceWeeks.forEach((w,i)=>{ const opt=document.createElement('option'); opt.value=i; opt.textContent=w.label; weekSelect.appendChild(opt); });
+    weekSelect.value = 0;
+  }
+
+  updateResults();
+}
+
+blockSelect.addEventListener('change', updateResults);
+fridaySelect.addEventListener('change', updateResults);
+weekSelect.addEventListener('change', updateResults);
+
+/* -------------------- Update results & rendering -------------------- */
+function updateResults(){
+  const key = schoolSelect.value;
+  const block = blockSelect.value;
+  if(!key || !block) return;
+  const school = schools[key];
+
+  let tableHTML = `<h2>Off-Block Times for ${school.name} (Off-block: ${block})</h2>`;
+
+  if(key === 'millwood' || key === 'dartmouth' || key === 'jlIlsley' || key === 'cobequid'){
+    tableHTML += `<table><tr><th>Date</th><th>Day</th><th>Block</th><th>Time</th><th>Total Free Time</th></tr>`;
+    const sourceWeeks = key==='millwood' ? millwoodWeeks : (key==='dartmouth' ? dartmouthWeeks : (key==='cobequid' ? cobequidWeeks : jlIlsleyWeeks));
+    const weekIndex = parseInt(weekSelect.value || 0, 10);
+    const week = sourceWeeks[weekIndex] || sourceWeeks[0];
+    const weekdays = ['Monday','Tuesday','Wednesday','Thursday','Friday'];
+
+    weekdays.forEach((weekday, i)=>{
+      const letter = (week.letters[i] || '-').toString();
+      const date = (week.dates && week.dates[i]) ? week.dates[i] : '-';
+
+      if(letter === 'HOLIDAY' || letter === 'PD' || letter === 'PD ' || letter.includes('No School') || letter.includes('Heritage') || letter.includes('March Break') || letter.includes('Good Friday') || letter.includes('Easter') || letter.includes('Victoria') || letter.includes('Exams') || letter === 'No Classes'){
+        tableHTML += `<tr><td>${date}</td><td>${weekday} — ${letter}</td><td colspan="3"><em>No classes / ${letter}</em></td></tr>`;
+        return;
+      }
+      if(letter === '-' || !letter){
+        tableHTML += `<tr><td>${date}</td><td>${weekday}</td><td colspan="3"><em>No data</em></td></tr>`;
+        return;
+      }
+
+      // For Cobequid the letters are day-numbers (1..8) so we use 'Day' + letter which matches blockMapping keys Day1..Day8
+      const dayKey = 'Day' + letter; // e.g. DayA or Day1
+      let blockMapping = school.blockMapping[dayKey];
+
+      // ensure millwood Day mappings are the corrected ones
+      if(key === 'millwood' && dayKey === 'DayC'){
+        blockMapping = {'1':'1st Afternoon Class','2':'2nd Afternoon Class','3':'2nd Morning Class','4':'1st Morning Class'};
+      }
+      if(key === 'millwood' && dayKey === 'DayD'){
+        blockMapping = {'1':'2nd Afternoon Class','2':'1st Afternoon Class','3':'1st Morning Class','4':'2nd Morning Class'};
+      }
+
+      // If the mapping is numeric-style but the block selected is A-D (Cobequid), try direct mapping
+      if(!blockMapping && school.blockMapping[letter]){
+        blockMapping = school.blockMapping[letter];
+      }
+
+      const blockName = blockMapping ? blockMapping[block] : '—';
+      const result = calculateFreeTime(blockName, key);
+      tableHTML += `<tr><td>${date}</td><td>${weekday} — Day ${letter}</td><td>${blockName} - ${block}</td><td>${result.display}</td><td class="free-time">${result.total || '-'}</td></tr>`;
+    });
+
+    tableHTML += `</table>`;
+
+  } else {
+    // non-week schools: show Monday-Thursday + rotating Friday where applicable
+    tableHTML += `<table><tr><th>Day</th><th>Block</th><th>Time</th><th>Total Free Time</th></tr>`;
+    const weekdays = ['Monday','Tuesday','Wednesday','Thursday'];
+    weekdays.forEach(day => {
+      let blockName = (schools[key].blockMapping[day] && schools[key].blockMapping[day][block]) || null;
+      if(!blockName){
+        blockName = (schools[key].blockMapping['DayA'] && schools[key].blockMapping['DayA'][block]) || (schools[key].blockMapping['A'] && schools[key].blockMapping['A'][block]) || '-';
+      }
+      const res = calculateFreeTime(blockName, key);
+      tableHTML += `<tr><td>${day}</td><td>${blockName || '-'} - ${block}</td><td>${res.display}</td><td class="free-time">${res.total || '-'}</td></tr>`;
+    });
+
+    // rotating Friday support for CPA/Citadel/Auburn
+    if(key === 'cpa' || key === 'citadel' || key === 'auburn'){
+      const selectedFriday = fridaySelect.value || rotatingFridays[0].dateStr;
+      const fData = rotatingFridays.find(f => f.dateStr === selectedFriday);
+      if(!fData){
+        tableHTML += `<tr><td><strong>Friday</strong></td><td colspan="3"><em>No rotating schedule for this date</em></td></tr>`;
+      } else if(fData.rotation === null){
+        tableHTML += `<tr><td><strong>Friday ${fData.dateStr} — No Classes</strong></td><td colspan="3"><em>No Classes</em></td></tr>`;
+      } else {
+        const rotationDay = fData.rotation; // e.g. 'Monday'
+        const blockName = schools[key].blockMapping[rotationDay] ? schools[key].blockMapping[rotationDay][block] : '-';
+        const r = calculateFreeTime(blockName, key);
+        tableHTML += `<tr><td><strong>Friday ${fData.dateStr} — ${rotationDay}</strong></td><td>${blockName} - ${block}</td><td>${r.display}</td><td class="free-time">${r.total || '-'}</td></tr>`;
+      }
+    }
+
+    tableHTML += `</table>`;
+  }
+
+  document.getElementById('result').innerHTML = tableHTML;
+
+  // Bell schedule
+  let bellHTML = `<h3>${school.name} Bell Schedule</h3><ul>`;
+  school.bellSchedule.forEach(b => bellHTML += `<li><strong>${b.name}:</strong> ${b.start}–${b.end}</li>`);
+  bellHTML += `</ul><br><strong>School Address:</strong><br>${school.address}`;
+  const bellDiv = document.getElementById('bell-schedule');
+  bellDiv.innerHTML = bellHTML; bellDiv.style.display = 'block';
+}
+
+/* -------------------- Initialize small UX niceties -------------------- */
+window.addEventListener('load', ()=>{ schoolSearch.style.display='none'; });
+
+/* For debugging */
+window._SCHOOLS = schools;
+window._MILLWOOD_WEEKS = millwoodWeeks;
+window._DARTMOUTH_WEEKS = dartmouthWeeks;
+window._JLILSLEY_WEEKS = jlIlsleyWeeks;
+window._COBEQUID_WEEKS = cobequidWeeks;
+</script>
+</body>
+</html>
